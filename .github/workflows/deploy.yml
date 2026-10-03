@@ -1,0 +1,78 @@
+name: Test and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Golden test cases
+        run: python -m pytest -q
+      - name: App renders without errors (Streamlit AppTest)
+        run: |
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          at = AppTest.from_file("app.py", default_timeout=120).run()
+          assert not at.exception, [e.value for e in at.exception]
+          print("AppTest OK:", at.error[0].value[:80] if at.error else "no verdict box")
+          PY
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build static site (stlite)
+        run: python site/build_site.py
+      - name: Browser smoke test of the built site
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          python site/smoke_check.py
+      - name: Upload smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: smoke*.png
+          if-no-files-found: ignore
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

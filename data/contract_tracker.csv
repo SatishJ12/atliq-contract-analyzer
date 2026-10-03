@@ -1,0 +1,49 @@
+contract_id,counterparty,doc_type,atliq_entity,client_country,requested_by,received_date,status,signed_date,expiry_date,value_usd,file_location,restrictive_clauses,notes
+C-001,Orbit Travels Pvt Ltd,MSA,Pvt Ltd,India,Karandeep,2022-06-10,Signed,2022-07-01,2024-06-30,41000,Drive > Contracts > 2022 (scan),,old travel booking project. ended
+C-002,Crestline Retail Inc,MSA,Inc,USA,Karandeep,2024-07-08,Signed,2024-08-01,2027-07-31,120000,Karandeep email,,rate card in exhibit B
+C-003,Crestline Retail Inc,SOW-1,Inc,USA,Karandeep,2024-07-08,Signed,2024-08-01,,48000,Karandeep email,,
+C-004,Crestline Retail Inc,SOW-2,Inc,USA,Jay,2025-05-02,Signed,2025-05-20,,36000,,,
+C-005,PayTrack Technologies,MSA,Pvt Ltd,India,Bhavin,2025-01-05,Signed,2025-01-22,2027-01-21,71000,Drive > Contracts > 2025,none,fraud detection
+C-006,Acme Retail Group,MSA,Pvt Ltd,India,Dhaval,2025-02-20,Signed,2025-03-10,2027-03-09,38000,Drive > Contracts > 2025,none,LD negotiated down
+C-007,Al Noor Hospitality Group,MSA,,UAE,Bhavin,2025-02-11,Signed,2025-03-15,2028-03-14,185000,Karandeep email attachments,,big one. 14 properties. guest analytics
+C-008,Sunrise Foods,MSA,Pvt Ltd,India,Dhaval,2025-04-02,Signed,2025-04-18,2028-04-17,33000,Dhaval laptop,,
+C-009,Northwind Logistics,MSA,Pvt Ltd,UK,Dhaval,2025-05-28,Signed,2025-06-20,2028-06-19,54000,Shared Drive > Clients > Northwind > Legal,none,UK law (they insisted)
+C-010,Northwind Logistics,SOW-1,Pvt Ltd,UK,Dhaval,2025-05-28,Signed,2025-06-20,,54000,Shared Drive > Clients > Northwind > Legal,,pipeline build - used PipeKit
+C-011,Northwind Logistics,SOW-1,Pvt Ltd,UK,Dhaval,2025-06-02,Signed,2025-06-20,,54000,,,dup?
+C-012,DataNest,Staff Aug Agreement,Pvt Ltd,India,Karandeep,2025-08-01,Signed,2025-08-11,2026-08-10,26000,,,2 engineers placed. renewal?
+C-013,Al Noor Hospitality Group,NDA,Pvt Ltd,UAE,Bhavin,2025-01-20,Signed,2025-01-22,,,,,mutual
+C-014,Brightwater Insurance Inc,MSA,Inc,USA,Karandeep,2025-11-20,Signed,2025-11-28,2027-05-27,92000,Karandeep email,,signed quarter end. see April post-mortem
+C-015,Kessler Mobility GmbH,MSA,Pvt Ltd,Germany,Bhavin,2025-12-15,Rejected,,,130000,,,walked away - unlimited liability
+C-016,Al Noor Hospitality Group,Waiver letter,Pvt Ltd,UAE,Karandeep,2026-02-05,Signed,2026-02-10,,,Karandeep email attachments,,for Seaside Hotels Oman
+C-017,Seaside Hotels LLC,SOW,Pvt Ltd,Oman,Karandeep,2026-02-01,Signed,2026-02-18,2026-08-31,29000,,,demand forecasting. done
+C-018,Brightwater Insurance Inc,Settlement letter,Inc,USA,Karandeep,2026-04-09,Signed,2026-04-20,,-9000,Calloway Stern email,,credit note 9k
+C-019,ShopSwift,SOW,,USA?,Bhavin,2026-07-01,Signed,2026-07-24,,55000,,,sat in review 9 days. budget moved to Q4
+C-020,Meridian Healthcare,NDA,Pvt Ltd,India,Bhavin,2026-07-15,Signed,2026-07-16,,,,,
+C-021,Trustline NBFC,MSA,Pvt Ltd,India,Dhaval,2026-07-20,Signed,2026-08-15,2027-08-14,48000,Drive > Contracts > 2026,,payment 45d after back and forth
+C-022,FinEdge Bank,MSA,Pvt Ltd,India,Bhavin,2026-07-28,Awaiting client,,,95000,Bhavin email,,their legal has our markup since 18 Aug
+C-023,Harrington Health Systems Inc,MSA,Inc,USA,Dhaval,2026-09-10,In review,,,210000,Karandeep email,,need by 1 Oct (Rebecca). their lawyers say template is non-negotiable. $210k
+C-024,TravelHub,MSA,Inc,UAE,Karandeep,2026-09-15,In review,,,52000,Karandeep email,,Nadia: 'we put your US company since you're US-listed on LinkedIn'. K to look this week
+C-025,Gulf Crown Hotels & Resorts,MSA,Pvt Ltd,Saudi Arabia,Bhavin,2026-09-18,In review,,,140000,Bhavin email,,sign by 10 Oct!! Faisal has a summit on the 14th. biggest deal of the year (Bhavin)
+C-026,Lakeshore Grocers Inc,SOW + rate card,Inc,USA,Jay,2026-09-19,In review,,,64000,Jay email,,"by 3 Oct. Jay gave sharper rate to win it - $72/hr senior DE, Dhaval ok'd on a call"
+C-027,BlueOrchid Hotels,Pilot agreement,Pvt Ltd,India,Jay,2026-09-21,In review,,,38000,Jay email,,by 5 Oct - want to start before Diwali. Jay: 'just India hotels I think'. TechSummit lead
+C-028,Rheinwerk Analytics GmbH,MSA + SOW,Pvt Ltd,Germany,Bhavin,2026-09-23,In review,,,96000,Bhavin email,,EUR 88k. by 15 Oct. Pranav: PipeKit can be reused 'like we did for Northwind'
+C-029,Sunrise Foods,SOW-2,Pvt Ltd,India,Dhaval,2026-09-24,,,,45000,Dhaval email,,"by 8 Oct. v2 portal + dashboard. Dhaval: 'same as last time, should be quick'"
+C-030,NovaPharma,DPA,Pvt Ltd,,Bhavin,2026-07-22,Signed,2026-07-30,,,,,security questionnaire done
+C-031,Northwind Logistics,SOW-2 (dashboards),Pvt Ltd,UK,Dhaval,,Not started,,,,,,Tom asked in June
+C-032,CloudSpan Technologies,Partnership Agreement,Pvt Ltd,Singapore,Bhavin,2025-08-18,Signed,2025-09-01,2028-08-31,,Shared Drive > Partnerships,,referral 12%. need 4 certified engineers
+C-033,PixelCraft Studio,Vendor Agreement,Pvt Ltd,India,Karandeep,2025-10-10,Signed,2025-10-20,2026-10-19,8500,,,design agency. softened our template for them
+C-034,GlobalMart,Mutual NDA,Pvt Ltd,India,Karandeep,2026-03-09,Signed,2026-03-12,,,Karandeep email,none,they sent one-way. we asked for mutual
+C-035,Datavane Inc,Partnership Agreement,Pvt Ltd,USA,Bhavin,2026-09-24,In review,,,,Bhavin email,,by 15 Oct. Bhavin: 'huge for our Europe and Middle East pipeline'
+C-036,FinServe Capital,Mutual NDA,Pvt Ltd,India,Karandeep,2026-09-25,In review,,,,Karandeep email,,Arjun: 'our standard mutual NDA' - needed before 1 Oct data walkthrough. K: will sign tonight
+C-037,Kriti Data Labs,Subcontractor Agreement,Pvt Ltd,India,Pranav,2026-09-26,Draft,,,10100,Pranav email,,Kriti wants to start 5 Oct. built from our vendor template (Jay made it from the Harrington draft). Kriti pushing back on 120-day pay-when-paid - 'we're 12 people'
+C-038,LoopMart,Mutual NDA,Pvt Ltd,India,Jay,2026-09-27,,,,,Jay email,,Sania sent their standard one
+C-039,Rohan Iyer,Contractor Agreement,Pvt Ltd,India,Dhaval,2025-04-24,Signed,2025-04-28,2026-04-27,18500,Dhaval laptop,,freelancer - Acme dashboards
+C-040,Marcus Reed,Contractor Agreement,,USA,Jay,2026-09-27,Draft,,,,Jay email,,Jay wants to send by Thu 1 Oct. India freelancer template - only name and rate changed
+C-041,CareBridge Clinics Inc,Mutual NDA,Inc,USA,Dhaval,2025-08-08,Signed,2025-08-11,,,Karandeep email,,
+C-042,CareBridge Clinics Inc,MSA,Inc,USA,Dhaval,2025-09-15,Signed,2025-10-06,2026-10-05,76000,Karandeep email,,healthcare. BAA + counsel review
+C-043,CareBridge Clinics Inc,BAA,Inc,USA,Dhaval,2025-09-15,Signed,2025-10-06,,,Karandeep email attachments,,Calloway Stern reviewed ($3.8k)
+C-044,AtliQ Technologies Pvt Ltd (intercompany),Subcontractor BAA,Inc,India,Pranav,2025-09-24,Signed,2025-10-06,,,Pranav Google Drive > CareBridge,,so Pune can work on de-identified data
+C-045,Harrington Health Systems Inc,Mutual NDA,Inc,USA,Dhaval,2026-08-19,Signed,2026-08-20,,,Dhaval email,,
+C-046,Harrington Health Systems Inc,BAA,Inc,USA,Dhaval,2026-09-16,In review,,,,Dhaval email,,Rebecca: must be signed together with the MSA. BAA wants $5M cyber insurance - ours is $1M (K)
+C-047,Daniel Ortiz,Contractor Agreement,Inc,USA,Dhaval,2026-09-27,Draft,,,,Dhaval email,,"US freelancer for Harrington. Dhaval: 'US-based, so the offshore thing is solved'. US contractor template"
+C-048,Daniel Ortiz,NDA,Inc,USA,Dhaval,2026-09-27,Draft,,,,Dhaval email,,

@@ -16,7 +16,7 @@ from commitments import check_commitments, precedent_matches
 from completeness import check_completeness
 from data_loader import (DATASET_TODAY, load_playbook_docs, load_register, match_tracker_rows,
                          related_notes)
-from rules import SEV_ORDER, DocProfile, Finding, profile_document, run_rules
+from rules import SEV_ORDER, DocProfile, Finding, downgrade_severity, finding_ids, profile_document, run_rules
 
 # Model choice follows the PRD / cost model (Deliverables 3 and 4):
 # Haiku 4.5 for extraction-style work, Sonnet 4.6 for the risk review.
@@ -268,6 +268,8 @@ def _facts_from_team_notes(report: Report) -> list[Finding]:
 
 
 def analyze(text: str, filename: str = "uploaded document", use_llm: bool = True) -> Report:
+    if not text or not text.strip():
+        raise ValueError("The contract text is empty. Paste or upload a contract with text in it.")
     rows = match_tracker_rows(text, filename)
     tracker_country = rows["client_country"].iloc[0] if len(rows) else ""
     tracker_type = rows["doc_type"].iloc[0] if len(rows) else ""
@@ -310,7 +312,7 @@ def analyze(text: str, filename: str = "uploaded document", use_llm: bool = True
                 f.verified = quote_in_text(f.quote, text)
                 if not f.verified:
                     f.title = "[Unverified quote] " + f.title
-                    f.severity = "Low" if f.severity == "High" else f.severity
+                    f.severity = downgrade_severity(f.severity)
                 report.findings.append(f)
         except Exception as exc:  # keep the deterministic report even if the API fails
             report.llm_error = f"{type(exc).__name__}: {exc}"
@@ -321,7 +323,7 @@ def analyze(text: str, filename: str = "uploaded document", use_llm: bool = True
 
 
 def brief_markdown(report: Report, decisions: dict | None = None) -> str:
-    """Exportable Review Brief + decision log (PRD feature F7)."""
+    """Exportable Review Brief + decision log (PRD feature F7). decisions are keyed by rules.finding_ids()."""
     decisions = decisions or {}
     p = report.profile
     lines = [f"# Review Brief — {report.filename}", "",
@@ -333,10 +335,10 @@ def brief_markdown(report: Report, decisions: dict | None = None) -> str:
     if report.llm_summary:
         lines += ["", "## Summary", report.llm_summary]
     lines += ["", "## Findings"]
-    for i, f in enumerate(report.findings):
+    for fid, f in zip(finding_ids(report.findings), report.findings):
         if f.severity == "Info":
             continue
-        d = decisions.get(i, {})
+        d = decisions.get(fid, {})
         lines += [f"### [{f.severity}] {f.title}", f"*{f.category} · {f.clause_ref} · source: {f.source}{'' if f.verified else ' · quote NOT verified'}*", ""]
         if f.quote:
             lines += [f"> {f.quote}", ""]

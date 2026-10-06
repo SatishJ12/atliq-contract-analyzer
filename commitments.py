@@ -222,7 +222,10 @@ def _index():
 
         docs = [c for c in signed_clauses() if len(c.text) > 80]
         vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), sublinear_tf=True, min_df=1)
-        mat = vec.fit_transform([c.heading + " " + c.text for c in docs])
+        try:
+            mat = vec.fit_transform([c.heading + " " + c.text for c in docs])
+        except ValueError:  # no signed contracts (missing data/signed_contracts) → nothing to retrieve
+            vec, mat, docs = None, None, []
         _INDEX = (vec, mat, docs)
     return _INDEX
 
@@ -231,6 +234,8 @@ def similar_signed_clauses(query: str, k: int = 5, min_score: float = 0.08) -> l
     from sklearn.metrics.pairwise import cosine_similarity
 
     vec, mat, docs = _index()
+    if not docs:
+        return []
     sims = cosine_similarity(vec.transform([query]), mat)[0]
     order = sims.argsort()[::-1][:k]
     return [(docs[i], float(sims[i])) for i in order if sims[i] >= min_score]

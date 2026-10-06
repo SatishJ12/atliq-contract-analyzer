@@ -16,9 +16,9 @@ Built on the synthetic AtliQ dataset (dataset "today" = 28 Sep 2026). Not legal 
 | **Fairness check** (F6) | When AtliQ is the buyer, the same rules are applied from the vendor's side and labelled "Fairness". | No |
 | **Review brief + decision log** (F7) | Per-finding decision (Negotiate / Accept risk / Escalate) with a note; downloadable brief (.md) and log (.json). Escalation to counsel suggested per PRD rules. | No |
 | **Claude review** | `claude-sonnet-4-6` adds context-aware findings using the playbook, negotiation history, register and team notes. Every quote Claude returns is string-matched against the contract; unverified ones are labelled and downgraded. | Yes |
-| **Ask about this contract** | Grounded Q&A over the contract, findings and register. | Yes |
+| **Ask about this contract** | Grounded Q&A over the contract, findings, register and team notes. The question goes to the v2 AI service (`POST /api/ask` on the FastAPI backend on Render), which holds the Groq key and answers with `llama-3.3-70b-versatile`. Works in the GitHub Pages build too. | The service's access token (`ATLIQ_ACCESS_TOKEN`), no model key |
 
-Without a key the app runs in **rules + register mode**: everything above except the two Claude rows.
+Without an Anthropic key the app runs in **rules + register mode** plus Ask: everything above except the Claude review row. `ANTHROPIC_API_KEY` turns on the Claude review; Ask only needs the v2 service to be running and its access token.
 
 ### Guardrails (from the PRD)
 - No finding without a clause reference and quote. Claude quotes are verified against the source text.
@@ -57,16 +57,18 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open http://localhost:8501. To turn on the Claude review, either set an environment variable before running:
+Open http://localhost:8501. **Ask about this contract** calls the v2 AI service at `https://atliq-contract-api.onrender.com` by default. Open **AI service settings** under the Ask box and paste the service's `ATLIQ_ACCESS_TOKEN` (Render service → Environment tab); it is kept only for that browser session. To point at another backend (for example a local `uvicorn backend.main:app` from the v2 repo) or to keep the token on the server, set environment variables before running:
 
 ```bash
 # Windows PowerShell
-$env:ANTHROPIC_API_KEY="sk-ant-..."
+$env:ATLIQ_API_URL="http://127.0.0.1:8000"
+$env:ATLIQ_ACCESS_TOKEN="..."
 # macOS/Linux
-export ANTHROPIC_API_KEY=sk-ant-...
+export ATLIQ_API_URL=http://127.0.0.1:8000
+export ATLIQ_ACCESS_TOKEN=...
 ```
 
-or copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and put the key there (it is git-ignored).
+or copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and put them there (it is git-ignored). To also turn on the optional Claude review, set `ANTHROPIC_API_KEY` the same way.
 
 Run the golden tests: `pip install pytest && python -m pytest -q`
 
@@ -74,13 +76,13 @@ Run the golden tests: `pip install pytest && python -m pytest -q`
 
 `.github/workflows/deploy.yml` runs on every push to `main`:
 
-1. **test**: installs `requirements.txt`, runs the 30 tests, and renders the app once with Streamlit's `AppTest`.
+1. **test**: installs `requirements.txt`, runs the 41 tests, and renders the app once with Streamlit's `AppTest`.
 2. **build**: `site/build_site.py` packages the app and dataset into a static page that runs Streamlit in the browser ([stlite](https://github.com/whitphx/stlite) + Pyodide), then `site/smoke_check.py` opens it in headless Chromium and waits for the Gulf Crown review to show the Al Noor conflict.
 3. **deploy**: publishes `_site/` to GitHub Pages at `https://<your-user>.github.io/<repo>/`.
 
 One-time setup: in the repo go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
 
-The Pages build runs in **rules + register mode** (no Claude review, because a public static page cannot keep an API key secret) and accepts Word/text/Markdown uploads (PDF parsing needs a native library Pyodide cannot load). The first load takes about a minute while Python downloads into the browser. For the full version with Claude, deploy the same repo on Streamlit Community Cloud (below).
+The Pages build runs in **rules + register mode** (no Claude review, because a public static page cannot keep an API key secret). **Ask about this contract** still works there: the browser calls the v2 AI service directly (its CORS list allows `https://satishj12.github.io`), and the viewer pastes the access token under AI service settings. The Pages build accepts Word/text/Markdown uploads (PDF parsing needs a native library Pyodide cannot load). The first load takes about a minute while Python downloads into the browser. For the full version with Claude, deploy the same repo on Streamlit Community Cloud (below).
 
 ## Deploy (free) on Streamlit Community Cloud
 
@@ -99,7 +101,7 @@ Vercel's free tier runs short-lived serverless functions and cannot host a Strea
    Check that `data/` (the synthetic dataset) is included and `.streamlit/secrets.toml` is not.
 2. Go to https://share.streamlit.io, sign in with GitHub, click **Create app → Deploy a public app from GitHub**.
 3. Repository: your repo · Branch: `main` · Main file path: `app.py` · (Advanced settings) Python 3.11.
-4. Optional: under **Advanced settings → Secrets**, paste `ANTHROPIC_API_KEY = "sk-ant-..."` to enable the Claude review. Without it the app runs in rules + register mode.
+4. Optional: under **Advanced settings → Secrets**, paste `ATLIQ_ACCESS_TOKEN = "..."` so viewers can use Ask without typing the token, and/or `ANTHROPIC_API_KEY = "sk-ant-..."` to enable the Claude review. Without them the app runs in rules + register mode, and Ask asks for the token.
 5. Click **Deploy**. You get a public `https://<name>.streamlit.app` URL for the demo video and presentation.
 
 ## Project layout
@@ -123,7 +125,11 @@ contract-analyzer/
 
 ## Models and cost
 
-Model choices follow the PRD and cost model (Deliverables 3 and 4): `claude-sonnet-4-6` for the risk review and Q&A, `claude-haiku-4-5` for register extraction. Both are overridable with `ATLIQ_REVIEW_MODEL` / `ATLIQ_EXTRACT_MODEL`. The playbook + register system prompt is marked for prompt caching, so repeated reviews pay full price for it only once per cache window. One review sends roughly the contract (3k-6k tokens) plus ~8k tokens of cached playbook/register context.
+Model choices follow the PRD and cost model (Deliverables 3 and 4): `claude-sonnet-4-6` for the risk review, `claude-haiku-4-5` for register extraction. Both are overridable with `ATLIQ_REVIEW_MODEL` / `ATLIQ_EXTRACT_MODEL`.
+
+Ask about this contract is answered by the v2 AI service, which runs Groq's `llama-3.3-70b-versatile`. That service guards the Groq key with the access token, a per-IP hourly limit and a daily budget; its 401/429/502 answers are shown as plain messages and the tabs keep working. Render's free tier sleeps when idle, so the first question after a while can take up to a minute.
+
+The playbook + register system prompt is marked for prompt caching, so repeated reviews pay full price for it only once per cache window. One review sends roughly the contract (3k-6k tokens) plus ~8k tokens of cached playbook/register context.
 
 ## Data notes and limitations
 

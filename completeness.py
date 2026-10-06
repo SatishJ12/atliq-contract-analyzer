@@ -11,7 +11,7 @@ import re
 import pandas as pd
 
 from data_loader import load_tracker
-from rules import DocProfile, Finding
+from rules import HEALTHCARE_CLIENT_NAMES, DocProfile, Finding
 
 PHI_TERMS = ["protected health information", "phi", "hipaa", "patient", "electronic health record", "ehr",
              "diagnosis", "clinical", "readmission", "business associate"]
@@ -105,7 +105,7 @@ def check_completeness(text: str, p: DocProfile, tracker_rows: pd.DataFrame) -> 
 
     # --- contractor / subcontractor on a healthcare project -----------------
     if p.atliq_role == "buyer" and phi:
-        upstream = re.search(r"harrington|carebridge|meridian", tl)
+        upstream = re.search("|".join(re.escape(n) for n in HEALTHCARE_CLIENT_NAMES), tl)
         upstream_name = upstream.group(0).title() if upstream else "the healthcare client"
         own_baa = _doc_present(rows, "BAA")
         req(f"Subcontractor BAA between AtliQ and this contractor (flows down {upstream_name}'s BAA)", len(own_baa) > 0,

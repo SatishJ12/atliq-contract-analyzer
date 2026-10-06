@@ -14,6 +14,7 @@ import streamlit as st
 
 from analyzer import (EXTRACT_MODEL, REVIEW_MODEL, Report, analyze, ask_about_contract, brief_markdown,
                       llm_available)
+from rules import finding_ids
 from data_loader import DATASET_TODAY, extract_text_from_upload, list_incoming, load_register, load_tracker, read_text
 
 st.set_page_config(page_title="AtliQ Contract Risk Analyzer", page_icon="📑", layout="wide")
@@ -25,9 +26,27 @@ DECISIONS = ["Not reviewed", "Negotiate", "Accept risk (documented exception)", 
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+class _LLMFailed(Exception):
+    """Raised inside the cached function so st.cache_data does not keep a report whose AI review failed."""
+
+    def __init__(self, report: Report):
+        super().__init__(report.llm_error)
+        self.report = report
+
+
 @st.cache_data(show_spinner=False)
+def _cached_analyze(text: str, filename: str, use_llm: bool) -> Report:
+    report = analyze(text, filename, use_llm=use_llm)
+    if report.llm_error:
+        raise _LLMFailed(report)  # exceptions are not cached, so the next run retries the AI review
+    return report
+
+
 def cached_analyze(text: str, filename: str, use_llm: bool) -> Report:
-    return analyze(text, filename, use_llm=use_llm)
+    try:
+        return _cached_analyze(text, filename, use_llm)
+    except _LLMFailed as failed:
+        return failed.report
 
 
 def esc(s: str) -> str:
@@ -114,6 +133,8 @@ tab_review, tab_register, tab_queue, tab_about = st.tabs(["Review a contract", "
 with tab_review:
     if not text:
         st.info("Pick an incoming draft or upload a contract in the sidebar.")
+    elif not text.strip():
+        st.error("No text found in that file. If it is a scanned PDF it needs OCR first.")
     else:
         with st.spinner("Reviewing… (rules, commitment register, document set" + (", Claude" if use_llm else "") + ")"):
             report = cached_analyze(text, filename, use_llm)
@@ -157,7 +178,9 @@ with tab_review:
         decisions_key = f"decisions::{filename}"
         decisions = st.session_state.setdefault(decisions_key, {})
 
-        def render_finding(i: int, f):
+        ids = finding_ids(report.findings)  # stable across re-runs, unlike list positions
+
+        def render_finding(i: str, f):
             badge = {"rules": "playbook rule", "register": "commitment register", "claude": "Claude", "notes": "team notes"}.get(f.source, f.source)
             with st.expander(f"{SEV_ICON.get(f.severity, '')} **{f.severity}** · {esc(f.title)}", expanded=f.severity == "High"):
                 st.caption(esc(f"{f.category} · {f.clause_ref or '—'} · source: {badge}") + ("" if f.verified else " · ⚠️ quote not found in contract"))
@@ -177,7 +200,7 @@ with tab_review:
                         decisions[i] = {"decision": d, "note": n, "title": f.title, "severity": f.severity}
 
         with t_find:
-            shown = [(i, f) for i, f in enumerate(report.findings) if f.category not in {"Prior commitment"}]
+            shown = [(i, f) for i, f in zip(ids, report.findings) if f.category not in {"Prior commitment"}]
             if not shown:
                 st.write("No clause-level issues found.")
             for i, f in shown:
@@ -185,7 +208,7 @@ with tab_review:
 
         with t_commit:
             st.caption("Checked against the commitment register built from the 17 signed contracts (see the Commitment register tab).")
-            pc = [(i, f) for i, f in enumerate(report.findings) if f.category == "Prior commitment"]
+            pc = [(i, f) for i, f in zip(ids, report.findings) if f.category == "Prior commitment"]
             if not pc:
                 st.write("No conflicts with existing commitments were found.")
             for i, f in pc:
@@ -218,7 +241,7 @@ with tab_review:
 
         with t_brief:
             md = brief_markdown(report, decisions)
-            open_high = sum(1 for i, f in enumerate(report.findings) if f.severity == "High" and decisions.get(i, {}).get("decision", "Not reviewed") == "Not reviewed")
+            open_high = sum(1 for i, f in zip(ids, report.findings) if f.severity == "High" and decisions.get(i, {}).get("decision", "Not reviewed") == "Not reviewed")
             if open_high:
                 st.warning(f"{open_high} High finding(s) still have no logged decision.")
             st.download_button("Download review brief (.md)", md, file_name=f"review_brief_{filename.rsplit('.', 1)[0]}.md")
@@ -226,10 +249,19 @@ with tab_review:
             st.markdown(esc(md))
 
         st.divider()
-        q = st.text_input("Ask about this contract", placeholder="e.g. Does the Al Noor waiver help here? Who owns the models we build?")
-        if q:
+        # A form so the question is sent once, on Ask, not again on every other widget change.
+        with st.form(f"ask-{filename}"):
+            q = st.text_input("Ask about this contract", placeholder="e.g. Does the Al Noor waiver help here? Who owns the models we build?")
+            asked = st.form_submit_button("Ask")
+        answers = st.session_state.setdefault("answers", {})
+        if asked and q.strip():
             with st.spinner("Thinking…"):
-                st.markdown(esc(ask_about_contract(q, text, report)))
+                answers[(filename, q)] = ask_about_contract(q, text, report)
+            st.session_state["last_question"] = (filename, q)
+        last = st.session_state.get("last_question")
+        if last and last[0] == filename and last in answers:
+            st.markdown(f"**Q:** {esc(last[1])}")
+            st.markdown(esc(answers[last]))
 
 # --------------------------------------------------------------------------- #
 # Register tab

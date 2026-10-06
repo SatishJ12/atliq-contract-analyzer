@@ -43,7 +43,7 @@ Without a key the app runs in **rules + register mode**: everything above except
 | FinServe "mutual" NDA | Only binds AtliQ; hidden 12-month non-compete |
 | Sunrise SOW-2, LoopMart NDA, Daniel Ortiz NDA | No blocking issues (the clean controls) |
 
-These are pinned in `tests/test_golden_cases.py` (13 tests).
+These are pinned in `tests/test_golden_cases.py` (13 tests); `tests/test_review_findings.py` adds 17 regression tests for the 6 Oct 2026 code review.
 
 ## Run it locally
 
@@ -74,7 +74,7 @@ Run the golden tests: `pip install pytest && python -m pytest -q`
 
 `.github/workflows/deploy.yml` runs on every push to `main`:
 
-1. **test**: installs `requirements.txt`, runs the 13 golden tests, and renders the app once with Streamlit's `AppTest`.
+1. **test**: installs `requirements.txt`, runs the 30 tests, and renders the app once with Streamlit's `AppTest`.
 2. **build**: `site/build_site.py` packages the app and dataset into a static page that runs Streamlit in the browser ([stlite](https://github.com/whitphx/stlite) + Pyodide), then `site/smoke_check.py` opens it in headless Chromium and waits for the Gulf Crown review to show the Al Noor conflict.
 3. **deploy**: publishes `_site/` to GitHub Pages at `https://<your-user>.github.io/<repo>/`.
 
@@ -115,6 +115,7 @@ contract-analyzer/
 ├── commitment_register.json  Human-verified register of obligations from signed contracts
 ├── build_register.py         Re-extracts the register with Claude (claude-haiku-4-5), drops unverifiable quotes
 ├── tests/test_golden_cases.py
+├── tests/test_review_findings.py
 ├── data/                     The synthetic AtliQ dataset (tracker, 17 signed, 15 incoming, notes)
 ├── requirements.txt
 └── .streamlit/               config.toml, secrets.toml.example

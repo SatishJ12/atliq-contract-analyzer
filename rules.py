@@ -6,6 +6,7 @@ adds judgement on top; it never replaces these.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import asdict, dataclass, field
 
@@ -35,6 +36,38 @@ COUNTRY_TERMS = {
 
 ATLIQ_LIMITS = {"cyber_insurance_usd": 1_000_000}
 
+# Counterparty names that drafts use instead of a defined term ("delays caused by Lakeshore"). Pattern checks
+# read them from here rather than hard-coding them; add a client here when its paper uses its own name.
+KNOWN_COUNTERPARTY_NAMES = ["lakeshore", "blueorchid", "datavane", "meridian", "harrington", "carebridge"]
+# Healthcare clients whose BAA a contractor's work would flow down from (completeness.py).
+HEALTHCARE_CLIENT_NAMES = ["harrington", "carebridge", "meridian"]
+
+US_STATES = [
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware", "florida",
+    "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+    "maryland", "massachusetts", "michigan", "minnesota", "mississippi", "missouri", "montana", "nebraska",
+    "nevada", "new hampshire", "new jersey", "new mexico", "new york", "north carolina", "north dakota", "ohio",
+    "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina", "south dakota", "tennessee", "texas",
+    "utah", "vermont", "virginia", "washington", "west virginia", "wisconsin", "wyoming", "district of columbia",
+]
+
+
+def is_us_law(law: str) -> bool:
+    """True when a governing-law string names a US state or the US itself (not just any 'State of ...')."""
+    law = law.lower()
+    if re.search(r"\bunited states\b|\bu\.s\.(?:a\.)?|\busa\b", law):
+        return True
+    return any(re.search(rf"\b{s}\b", law) for s in US_STATES)
+
+
+def _names_alt() -> str:
+    return "|".join(re.escape(n) for n in KNOWN_COUNTERPARTY_NAMES)
+
+
+def downgrade_severity(severity: str) -> str:
+    """One rule for an LLM finding whose quote is not in the contract: drop one level (High→Medium→Low)."""
+    return {"High": "Medium", "Medium": "Low"}.get(severity, severity)
+
 
 @dataclass
 class Finding:
@@ -51,6 +84,23 @@ class Finding:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def stable_id(self) -> str:
+        """Depends on what the finding says (category + quote), not where it sits in the list, so a decision logged
+        against it survives re-runs that add, drop or re-order findings."""
+        basis = self.quote or f"{self.clause_ref}|{self.title.removeprefix('[Unverified quote] ')}"
+        return hashlib.sha1(f"{self.category}|{basis}".encode()).hexdigest()[:12]
+
+
+def finding_ids(findings: list[Finding]) -> list[str]:
+    """stable_id() for each finding, with a -2, -3 … suffix when two findings share one."""
+    seen: dict[str, int] = {}
+    out = []
+    for f in findings:
+        base = f.stable_id()
+        seen[base] = seen.get(base, 0) + 1
+        out.append(base if seen[base] == 1 else f"{base}-{seen[base]}")
+    return out
 
 
 @dataclass
@@ -119,6 +169,8 @@ def profile_document(text: str, tracker_country: str = "", tracker_doc_type: str
     p = DocProfile()
     p.clauses = split_clauses(text)
     first_heading = re.search(r"^\s*#\s+(.+)$", text, re.M)
+    if not text or not text.strip():
+        raise ValueError("The contract text is empty. Paste or upload a contract with text in it.")
     p.title = first_heading.group(1).strip("* ") if first_heading else text.strip().splitlines()[0][:120]
     title_l = (p.title + " " + text[:600]).lower()
 
@@ -222,7 +274,7 @@ def check_governing_law(p: DocProfile) -> list[Finding]:
         return [Finding("Governing law", "Medium", "No governing-law clause found",
                         "Could not find a 'governed by the laws of…' clause.", "Add governing law and venue.")] if not p.is_nda else []
     law = p.governing_law.lower()
-    us_state = any(s in law for s in ["delaware", "texas", "illinois", "ohio", "arizona", "new york", "california", "new jersey", "state of"])
+    us_state = is_us_law(law)
     ok = (p.atliq_entity == "Pvt Ltd" and "india" in law) or (p.atliq_entity == "Inc" and us_state)
     if ok:
         return []
@@ -262,8 +314,9 @@ def check_liquidated_damages(p: DocProfile) -> list[Finding]:
     capped = _has(joined, "shall not exceed", "maximum of", "up to a maximum", "not exceed", "capped")
     per_day = bool(re.search(r"each (?:calendar )?day|per day|day or part day|each day", joined))
     on_total = bool(re.search(r"(total )?contract value|total fees|total contract value", joined)) and not re.search(r"milestone fee of (the|that)|affected milestone fee|relevant milestone fee|fees payable for the affected milestone", joined)
-    client_excl = bool(re.search(r"caused by (the )?(client|company|customer|lakeshore|blueorchid)|for which it is responsible|attributable to (the )?(supplier|vendor|atliq|service provider)", joined)) or _has(joined, "caused by the client", "caused by the company", "attributable to the client", "act or omission of the client",
-                       "caused by lakeshore", "caused by blueorchid", "attributable to the company", "delay caused by", "solely attributable",
+    names = _names_alt()
+    client_excl = bool(re.search(rf"caused by (the )?(client|company|customer|{names})|for which it is responsible|attributable to (the )?(supplier|vendor|atliq|service provider)", joined)) or _has(joined, "caused by the client", "caused by the company", "attributable to the client", "act or omission of the client",
+                       *(f"caused by {n}" for n in KNOWN_COUNTERPARTY_NAMES), "attributable to the company", "delay caused by", "solely attributable",
                        "for reasons attributable to the supplier", "attributable to vendor", "attributable to atliq")
     cumulative = _has(joined, "in addition to and not in lieu", "in addition to any other right", "cumulative")
 
@@ -324,7 +377,8 @@ def check_liability(p: DocProfile) -> list[Finding]:
                                "Looks alarming but is the normal German-law carve-out; the general cap still applies to ordinary negligence.",
                                "Acceptable; confirm a general cap (e.g. 1x fees) applies to everything else.", clause_ref=c.ref, quote=_short(c.text)))
             continue
-        one_sided = re.search(r"cap on (client|atliq|datavane|company) liability|(client|atliq|datavane)'s (total )?aggregate liability", t)
+        names = _names_alt()
+        one_sided = re.search(rf"cap on (client|atliq|company|{names}) liability|(client|atliq|{names})'s (total )?aggregate liability", t)
         if one_sided:
             protected = one_sided.group(1) or one_sided.group(2)
             protected = {"atliq": "AtliQ"}.get(protected, protected.title())
@@ -415,7 +469,7 @@ def check_nda(p: DocProfile, text: str) -> list[Finding]:
         return []
     out = []
     atliq_para, _ = _party_paragraphs(text)
-    one_way = "recipient" in atliq_para.lower() or bool(re.search(r'disclosed .{0,60}by or on behalf of (the company|meridian|[A-Z]\w+) to the recipient', text, re.I))
+    one_way = "recipient" in atliq_para.lower() or bool(re.search(rf'disclosed .{{0,60}}by or on behalf of (the company|{_names_alt()}|[A-Z]\w+) to the recipient', text, re.I))
     mutual_title = "mutual" in p.title.lower()
     if one_way and mutual_title:
         out.append(Finding("NDA", "High", "'Mutual' NDA that only binds AtliQ",

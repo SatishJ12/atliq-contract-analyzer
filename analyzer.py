@@ -267,8 +267,11 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> tuple[
 def ask_about_contract(question: str, text: str, filename: str, access_token: str | None = None,
                        api_url: str | None = None) -> str:
     """Free-form Q&A grounded in the contract + register, answered by the v2 AI service."""
-    base = (api_url or ask_api_url()).rstrip("/")
-    token = access_token or server_access_token()
+    configured = ask_api_url()
+    base = (api_url or configured).rstrip("/")
+    # The server-side token only ever goes to the configured service. A URL typed into the app gets a typed
+    # token or none, so a visitor cannot point Ask at their own server and read the secret off the request.
+    token = access_token or (server_access_token() if base == configured else None)
     headers = {"X-Access-Token": token} if token else {}
     status, body = _post_json(f"{base}/api/ask", {"question": question, "text": text, "filename": filename},
                               headers, ASK_TIMEOUT_S)

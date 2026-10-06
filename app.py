@@ -254,7 +254,8 @@ with tab_review:
         st.markdown("**Ask about this contract**")
         with st.expander("AI service settings", expanded=False):
             api_url = st.text_input("AI service URL", value=ask_api_url(), key="ask_api_url",
-                                    help="The v2 FastAPI backend on Render. Ask is sent to {URL}/api/ask.")
+                                    help="The v2 FastAPI backend on Render. Ask is sent to {URL}/api/ask. "
+                                         "A token set on the server is only sent to the default URL.")
             has_server_token = bool(server_access_token())
             token = st.text_input("Access token", type="password", key="ask_token",
                                   placeholder="Set on the server" if has_server_token else "ATLIQ_ACCESS_TOKEN from Render",

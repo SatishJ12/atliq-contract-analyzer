@@ -26,7 +26,9 @@ Without an Anthropic key the app runs in **rules + register mode** plus Ask: eve
 - High findings ask for a logged human decision.
 - Escalate to counsel when: value ≥ $150k with open High findings, a conflict with a signed commitment, a HIPAA/GDPR document gap, or a "non-negotiable" template with High findings.
 
-## Results on the 15 incoming drafts (rules + register mode)
+## Results on the 15 drafts (rules + register mode)
+
+Gulf Crown MSA and Harrington MSA sit in `data/demo_uploads/` rather than `data/incoming/`, so they are not pre-loaded; the sidebar list and queue show the other 13. See "Live demo with uploads" below.
 
 | Draft | What it catches |
 |---|---|
@@ -71,6 +73,17 @@ export ATLIQ_ACCESS_TOKEN=...
 or copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and put them there (it is git-ignored). To also turn on the optional Claude review, set `ANTHROPIC_API_KEY` the same way.
 
 Run the golden tests: `pip install pytest && python -m pytest -q`
+
+## Live demo with uploads
+
+`data/demo_uploads/` holds two drafts that the app never loads on its own, so you can show a review happening live:
+
+| File | What the review catches |
+|---|---|
+| `2026-09-18_gulf_crown_hotels_msa_draft.md` | Al Noor GCC non-compete conflict from the commitment register, LD on total contract value, Saudi law |
+| `2026-09-10_harrington_health_msa_draft.md` | Healthcare deal with no signed BAA and no subcontractor BAA (HIPAA gap), uncapped per-day LD |
+
+In the sidebar choose upload and pick one of these files. Both are Markdown, so they also work in the in-browser GitHub Pages build.
 
 ## Deploy with GitHub Actions → GitHub Pages (free)
 
@@ -118,7 +131,7 @@ contract-analyzer/
 ├── build_register.py         Re-extracts the register with Claude (claude-haiku-4-5), drops unverifiable quotes
 ├── tests/test_golden_cases.py
 ├── tests/test_review_findings.py
-├── data/                     The synthetic AtliQ dataset (tracker, 17 signed, 15 incoming, notes)
+├── data/                     The synthetic AtliQ dataset (tracker, 17 signed, 13 incoming, 2 demo uploads, notes)
 ├── requirements.txt
 └── .streamlit/               config.toml, secrets.toml.example
 ```
@@ -127,7 +140,7 @@ contract-analyzer/
 
 Model choices follow the PRD and cost model (Deliverables 3 and 4): `claude-sonnet-4-6` for the risk review, `claude-haiku-4-5` for register extraction. Both are overridable with `ATLIQ_REVIEW_MODEL` / `ATLIQ_EXTRACT_MODEL`.
 
-Ask about this contract is answered by the v2 AI service, which runs Groq's `llama-3.3-70b-versatile`. That service guards the Groq key with the access token, a per-IP hourly limit and a daily budget; its 401/429/502 answers are shown as plain messages and the tabs keep working. Render's free tier sleeps when idle, so the first question after a while can take up to a minute.
+Ask about this contract is answered by the v2 AI service, which runs Groq's `llama-3.3-70b-versatile`. That service guards the Groq key with the access token, a per-IP hourly limit and a daily budget; its 401/429/502 answers are shown as plain messages and the tabs keep working. Render's free tier sleeps when idle, so the first question after a while can take up to a minute. To fit Groq's free tier (about 6,000 tokens a minute), the service sends at most 16,000 characters (about 4,000 tokens) of the contract to the model; a longer contract is cut there with a note saying so. The findings in the other tabs always come from the full text.
 
 The playbook + register system prompt is marked for prompt caching, so repeated reviews pay full price for it only once per cache window. One review sends roughly the contract (3k-6k tokens) plus ~8k tokens of cached playbook/register context.
 

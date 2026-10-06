@@ -12,8 +12,8 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from analyzer import (ASK_MODEL, EXTRACT_MODEL, REVIEW_MODEL, Report, analyze, ask_about_contract, ask_available,
-                      brief_markdown, llm_available)
+from analyzer import (EXTRACT_MODEL, REVIEW_MODEL, Report, analyze, ask_about_contract, ask_api_url, brief_markdown,
+                      llm_available, server_access_token)
 from rules import finding_ids
 from data_loader import DATASET_TODAY, extract_text_from_upload, list_incoming, load_register, load_tracker, read_text
 
@@ -96,8 +96,6 @@ with st.sidebar:
         else:
             st.info("Rules + register mode. Set `ANTHROPIC_API_KEY` to add Claude's clause-by-clause review.")
         use_llm = False
-    if ask_available():
-        st.caption(f"Ask about this contract: `{ASK_MODEL}` on Groq")
 
     st.divider()
     source = st.radio("Contract to review", ["Incoming draft (dataset)", "Upload a contract"], label_visibility="visible")
@@ -251,32 +249,33 @@ with tab_review:
             st.markdown(esc(md))
 
         st.divider()
-        if not ask_available():
-            # Free-text Q&A needs Groq. Without a key, say so up front and point at the
-            # tabs above instead of showing a box that can only return an error.
-            st.markdown("**Ask about this contract**")
-            st.info(
-                "Free-text questions need an AI model, which is off in this version "
-                + ("(it runs entirely in your browser)." if os.environ.get("ATLIQ_BROWSER_BUILD") == "1" else "(no `GROQ_API_KEY` is set).")
-                + " Everything the rules, commitment register and completeness checks found is already in the tabs above this line: "
-                "**Prior commitments** (register conflicts), **Clause risks** (playbook rules), **Document set** (missing BAA / DPA / annexes), "
-                "**Precedents & team notes**, and **Review brief & decisions**. Click a tab to open it."
-            )
-        else:
-            # A form so the question is sent once, on Ask, not again on every other widget change.
-            with st.form(f"ask-{filename}"):
-                q = st.text_input("Ask about this contract", placeholder="e.g. Does the Al Noor waiver help here? Who owns the models we build?",
-                                  help=f"Answered by `{ASK_MODEL}` on Groq from the contract, findings, register and team notes.")
-                asked = st.form_submit_button("Ask")
-            answers = st.session_state.setdefault("answers", {})
-            if asked and q.strip():
-                with st.spinner("Thinking…"):
-                    answers[(filename, q)] = ask_about_contract(q, text, report)
-                st.session_state["last_question"] = (filename, q)
-            last = st.session_state.get("last_question")
-            if last and last[0] == filename and last in answers:
-                st.markdown(f"**Q:** {esc(last[1])}")
-                st.markdown(esc(answers[last]))
+        # Free-text Q&A goes to the v2 AI service, which holds the Groq key, so it also works
+        # in the browser build. Its access token is typed here and kept only for this session.
+        st.markdown("**Ask about this contract**")
+        with st.expander("AI service settings", expanded=False):
+            api_url = st.text_input("AI service URL", value=ask_api_url(), key="ask_api_url",
+                                    help="The v2 FastAPI backend on Render. Ask is sent to {URL}/api/ask.")
+            has_server_token = bool(server_access_token())
+            token = st.text_input("Access token", type="password", key="ask_token",
+                                  placeholder="Set on the server" if has_server_token else "ATLIQ_ACCESS_TOKEN from Render",
+                                  help="Copy ATLIQ_ACCESS_TOKEN from the Render service's Environment tab. "
+                                       "It is kept only for this browser session and is never saved.")
+        # A form so the question is sent once, on Ask, not again on every other widget change.
+        with st.form(f"ask-{filename}"):
+            q = st.text_input("Ask about this contract", label_visibility="collapsed",
+                              placeholder="e.g. Does the Al Noor waiver help here? Who owns the models we build?",
+                              help="Answered by the v2 AI service (Groq) from the contract, findings, register and team notes.")
+            asked = st.form_submit_button("Ask")
+        answers = st.session_state.setdefault("answers", {})
+        if asked and q.strip():
+            with st.spinner("Asking the AI service (the first question can take up to a minute while it wakes)…"):
+                answers[(filename, q)] = ask_about_contract(q, text, filename, access_token=token.strip() or None,
+                                                            api_url=api_url.strip() or None)
+            st.session_state["last_question"] = (filename, q)
+        last = st.session_state.get("last_question")
+        if last and last[0] == filename and last in answers:
+            st.markdown(f"**Q:** {esc(last[1])}")
+            st.markdown(esc(answers[last]))
 
 # --------------------------------------------------------------------------- #
 # Register tab

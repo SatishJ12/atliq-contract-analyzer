@@ -4,14 +4,18 @@ Runs fully without an API key (rules + register + retrieval). With
 ANTHROPIC_API_KEY set, Claude adds a clause-by-clause review grounded in the
 same evidence, and every quote it returns is string-matched against the
 contract before it is shown (unverified quotes are labelled, never hidden).
-With GROQ_API_KEY set, "Ask about this contract" answers free-text questions
-through Groq (llama-3.3-70b-versatile), sized to fit the Groq free tier.
+"Ask about this contract" sends the question to the v2 AI service (FastAPI on
+Render, which holds the Groq key) at POST {ATLIQ_API_URL}/api/ask, so no model
+key is needed here, and it works in the browser build too.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 
 from commitments import check_commitments, precedent_matches
@@ -24,14 +28,10 @@ from rules import SEV_ORDER, DocProfile, Finding, downgrade_severity, finding_id
 # Haiku 4.5 for extraction-style work, Sonnet 4.6 for the risk review.
 REVIEW_MODEL = os.environ.get("ATLIQ_REVIEW_MODEL", "claude-sonnet-4-6")
 EXTRACT_MODEL = os.environ.get("ATLIQ_EXTRACT_MODEL", "claude-haiku-4-5")
-# Free-text Q&A runs on Groq (same model the v2 prototype uses for Ask).
-ASK_MODEL = os.environ.get("ATLIQ_ASK_MODEL", "llama-3.3-70b-versatile")
-# Groq's free tier allows ~12k tokens/min for this model, counting max_tokens,
-# so the Ask prompt is capped well under that (~4 chars per token).
-ASK_CONTRACT_CHARS = 24_000
-ASK_NOTE_CHARS = 1_200
-# Register fields the Ask prompt leaves out (verbatim quotes stay in the tabs) to save tokens.
-ASK_REGISTER_SKIP = {"triggers", "quote", "source_file", "tracker_id"}
+# Free-text Q&A is answered by the v2 AI service (it holds the Groq key and runs
+# llama-3.3-70b-versatile). Callers send the service's access token in X-Access-Token.
+DEFAULT_ASK_API_URL = "https://atliq-contract-api.onrender.com"
+ASK_TIMEOUT_S = 90  # Render's free tier sleeps when idle and takes up to ~1 min to wake
 
 COUNSEL_VALUE_THRESHOLD = 150_000
 
@@ -52,18 +52,19 @@ def _get_api_key() -> str | None:
     return _get_secret("ANTHROPIC_API_KEY")
 
 
-def _get_groq_key() -> str | None:
-    return _get_secret("GROQ_API_KEY")
+def ask_api_url() -> str:
+    """Base URL of the v2 AI service (ATLIQ_API_URL env var or secret, else the Render default)."""
+    return (_get_secret("ATLIQ_API_URL") or DEFAULT_ASK_API_URL).rstrip("/")
+
+
+def server_access_token() -> str | None:
+    """ATLIQ_ACCESS_TOKEN kept server-side (env var or Streamlit secret); never sent to the page."""
+    return _get_secret("ATLIQ_ACCESS_TOKEN")
 
 
 def llm_available() -> bool:
     """Claude clause-by-clause review (ANTHROPIC_API_KEY)."""
     return bool(_get_api_key())
-
-
-def ask_available() -> bool:
-    """Free-text Q&A (GROQ_API_KEY)."""
-    return bool(_get_groq_key())
 
 
 @dataclass
@@ -225,63 +226,66 @@ Return the review as JSON matching the schema."""
     return json.loads(body)
 
 
-ASK_SYSTEM_PROMPT = """You answer questions about a draft contract for AtliQ Technologies, an IT services firm with no legal team. \
-CEO Karandeep signs every contract. Answer in under 150 words and quote clause numbers. Use only the contract, \
-AtliQ's checklist, entities, commitment register, team notes and findings below. If they do not answer the question, \
-say so and say who at AtliQ would know. This is not legal advice.
-
-<karandeep_checklist>
-{checklist}
-</karandeep_checklist>
-
-<atliq_entities>
-{entities}
-</atliq_entities>
-
-<commitment_register>
-{register}
-</commitment_register>
-"""
+def _in_browser() -> bool:
+    return sys.platform == "emscripten"  # Pyodide / stlite (GitHub Pages build)
 
 
-def _ask_messages(question: str, text: str, report: Report) -> list[dict]:
-    docs = load_playbook_docs()
-    register = json.dumps([{k: v for k, v in e.items() if k not in ASK_REGISTER_SKIP} for e in load_register()],
-                          separators=(",", ":"))
-    system = ASK_SYSTEM_PROMPT.format(checklist=docs.get("karandeep_contract_checklist.md", ""),
-                                      entities=docs.get("atliq_entities.md", ""), register=register)
-    findings = "\n".join(f"- [{f.severity}] {f.title} (cl. {f.clause_ref}): {f.explanation}" for f in report.findings) or "(none)"
-    # Only the notes about this counterparty, not the whole negotiation history, to stay under the free-tier limit.
-    notes = "\n\n".join(f"### {n}\n{b[:ASK_NOTE_CHARS]}" for n, b in report.context_notes) or "(none)"
-    contract = text if len(text) <= ASK_CONTRACT_CHARS else text[:ASK_CONTRACT_CHARS] + "\n[... contract truncated ...]"
-    user = (f"<contract>\n{contract}\n</contract>\n\n<team_notes_about_this_counterparty>\n{notes}\n"
-            f"</team_notes_about_this_counterparty>\n\n<findings>\n{findings}\n</findings>\n\nQuestion: {question}")
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> tuple[int, dict]:
+    """POST JSON and return (status, parsed body). Status 0 means the service could not be reached."""
+    data = json.dumps(payload)
+    headers = {"Content-Type": "application/json", **headers}
+    if _in_browser():
+        # urllib has no network in Pyodide. stlite runs Python in a web worker, where a
+        # synchronous XMLHttpRequest is allowed and keeps this function synchronous.
+        from js import XMLHttpRequest  # type: ignore[import-not-found]
 
-
-def ask_about_contract(question: str, text: str, report: Report) -> str:
-    """Free-form Q&A grounded in the contract + register (needs a Groq API key)."""
-    if not ask_available():
-        return "Add a GROQ_API_KEY to ask questions. The rule, register and document-set results are in the Prior commitments, Clause risks and Document set tabs above, and work without it."
-    import groq
-
-    client = groq.Groq(api_key=_get_groq_key())
+        xhr = XMLHttpRequest.new()
+        xhr.open("POST", url, False)
+        for k, v in headers.items():
+            xhr.setRequestHeader(k, v)
+        try:
+            xhr.send(data)
+        except Exception:
+            return 0, {}
+        status, body = int(xhr.status), str(xhr.responseText or "")
+    else:
+        req = urllib.request.Request(url, data=data.encode(), headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                status, body = resp.status, resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            status, body = e.code, e.read().decode("utf-8", "replace")
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return 0, {}
     try:
-        resp = client.chat.completions.create(
-            model=ASK_MODEL,
-            messages=_ask_messages(question, text, report),
-            max_tokens=512,
-            temperature=0.2,
-        )
-    except groq.RateLimitError:
-        return "Groq's free-tier limit was reached. Wait a minute and ask again; the tabs above still have every finding."
-    except groq.APIStatusError as e:
-        if e.status_code == 413:
-            return "This contract is too long for Groq's free tier in one question. The tabs above still have every finding."
-        return f"Groq returned an error ({e.status_code}). The tabs above still have every finding."
-    except groq.APIConnectionError:
-        return "Could not reach Groq. Check the network and try again; the tabs above still have every finding."
-    return resp.choices[0].message.content or ""
+        parsed = json.loads(body) if body else {}
+    except ValueError:
+        parsed = {}
+    return status, parsed if isinstance(parsed, dict) else {}
+
+
+def ask_about_contract(question: str, text: str, filename: str, access_token: str | None = None,
+                       api_url: str | None = None) -> str:
+    """Free-form Q&A grounded in the contract + register, answered by the v2 AI service."""
+    base = (api_url or ask_api_url()).rstrip("/")
+    token = access_token or server_access_token()
+    headers = {"X-Access-Token": token} if token else {}
+    status, body = _post_json(f"{base}/api/ask", {"question": question, "text": text, "filename": filename},
+                              headers, ASK_TIMEOUT_S)
+    if status == 200 and isinstance(body.get("answer"), str):
+        return body["answer"]
+    detail = body.get("detail") if isinstance(body.get("detail"), str) else ""
+    tabs = " The tabs above still have every finding."
+    if status == 0:
+        return (f"Could not reach the AI service at {base}. Its free hosting sleeps when idle, so wait a minute "
+                "and ask again." + tabs)
+    if status == 401:
+        return "The AI service needs its access token. Paste it under AI service settings and ask again." + tabs
+    if status in (413, 422):
+        return "The question or contract is too long for the AI service (question up to 1,000 characters)." + tabs
+    if status == 429:
+        return (detail or "The AI service's usage limit was reached. Try again later.") + tabs
+    return (detail or f"The AI service returned an error ({status}).") + tabs
 
 
 # --------------------------------------------------------------------------- #

@@ -16,9 +16,9 @@ Built on the synthetic AtliQ dataset (dataset "today" = 28 Sep 2026). Not legal 
 | **Fairness check** (F6) | When AtliQ is the buyer, the same rules are applied from the vendor's side and labelled "Fairness". | No |
 | **Review brief + decision log** (F7) | Per-finding decision (Negotiate / Accept risk / Escalate) with a note; downloadable brief (.md) and log (.json). Escalation to counsel suggested per PRD rules. | No |
 | **Claude review** | `claude-sonnet-4-6` adds context-aware findings using the playbook, negotiation history, register and team notes. Every quote Claude returns is string-matched against the contract; unverified ones are labelled and downgraded. | Yes |
-| **Ask about this contract** | Grounded Q&A over the contract, findings and register. | Yes |
+| **Ask about this contract** | Grounded Q&A over the contract, findings, register and team notes, answered by `llama-3.3-70b-versatile` on Groq. The prompt is kept under ~11k tokens so it fits Groq's free tier. | Yes (`GROQ_API_KEY`, free tier works) |
 
-Without a key the app runs in **rules + register mode**: everything above except the two Claude rows.
+Without keys the app runs in **rules + register mode**: everything above except the last two rows. The two keys are independent: `GROQ_API_KEY` turns on Ask, `ANTHROPIC_API_KEY` turns on the Claude review.
 
 ### Guardrails (from the PRD)
 - No finding without a clause reference and quote. Claude quotes are verified against the source text.
@@ -57,16 +57,16 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open http://localhost:8501. To turn on the Claude review, either set an environment variable before running:
+Open http://localhost:8501. To turn on **Ask about this contract**, get a free key at https://console.groq.com/keys and either set an environment variable before running:
 
 ```bash
 # Windows PowerShell
-$env:ANTHROPIC_API_KEY="sk-ant-..."
+$env:GROQ_API_KEY="gsk_..."
 # macOS/Linux
-export ANTHROPIC_API_KEY=sk-ant-...
+export GROQ_API_KEY=gsk_...
 ```
 
-or copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and put the key there (it is git-ignored).
+or copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and put the key there (it is git-ignored). To also turn on the optional Claude review, set `ANTHROPIC_API_KEY` the same way.
 
 Run the golden tests: `pip install pytest && python -m pytest -q`
 
@@ -74,7 +74,7 @@ Run the golden tests: `pip install pytest && python -m pytest -q`
 
 `.github/workflows/deploy.yml` runs on every push to `main`:
 
-1. **test**: installs `requirements.txt`, runs the 30 tests, and renders the app once with Streamlit's `AppTest`.
+1. **test**: installs `requirements.txt`, runs the 37 tests, and renders the app once with Streamlit's `AppTest`.
 2. **build**: `site/build_site.py` packages the app and dataset into a static page that runs Streamlit in the browser ([stlite](https://github.com/whitphx/stlite) + Pyodide), then `site/smoke_check.py` opens it in headless Chromium and waits for the Gulf Crown review to show the Al Noor conflict.
 3. **deploy**: publishes `_site/` to GitHub Pages at `https://<your-user>.github.io/<repo>/`.
 
@@ -99,7 +99,7 @@ Vercel's free tier runs short-lived serverless functions and cannot host a Strea
    Check that `data/` (the synthetic dataset) is included and `.streamlit/secrets.toml` is not.
 2. Go to https://share.streamlit.io, sign in with GitHub, click **Create app → Deploy a public app from GitHub**.
 3. Repository: your repo · Branch: `main` · Main file path: `app.py` · (Advanced settings) Python 3.11.
-4. Optional: under **Advanced settings → Secrets**, paste `ANTHROPIC_API_KEY = "sk-ant-..."` to enable the Claude review. Without it the app runs in rules + register mode.
+4. Optional: under **Advanced settings → Secrets**, paste `GROQ_API_KEY = "gsk_..."` to enable Ask about this contract, and/or `ANTHROPIC_API_KEY = "sk-ant-..."` to enable the Claude review. Without them the app runs in rules + register mode.
 5. Click **Deploy**. You get a public `https://<name>.streamlit.app` URL for the demo video and presentation.
 
 ## Project layout
@@ -123,7 +123,9 @@ contract-analyzer/
 
 ## Models and cost
 
-Model choices follow the PRD and cost model (Deliverables 3 and 4): `claude-sonnet-4-6` for the risk review and Q&A, `claude-haiku-4-5` for register extraction. Both are overridable with `ATLIQ_REVIEW_MODEL` / `ATLIQ_EXTRACT_MODEL`. The playbook + register system prompt is marked for prompt caching, so repeated reviews pay full price for it only once per cache window. One review sends roughly the contract (3k-6k tokens) plus ~8k tokens of cached playbook/register context.
+Model choices follow the PRD and cost model (Deliverables 3 and 4): `claude-sonnet-4-6` for the risk review, `claude-haiku-4-5` for register extraction. Both are overridable with `ATLIQ_REVIEW_MODEL` / `ATLIQ_EXTRACT_MODEL`.
+
+Ask about this contract runs on Groq's `llama-3.3-70b-versatile` (override with `ATLIQ_ASK_MODEL`), the same model the v2 prototype uses for Ask. Its prompt carries the contract, Karandeep's checklist, the entity rules, a compact register (no verbatim quotes), this counterparty's team notes and the findings: about 5k-10k tokens on the 15 drafts. Groq's free tier allows about 12k tokens per minute for this model, so expect roughly one question a minute; a rate-limit or size error is shown as a plain message and the tabs keep working. The playbook + register system prompt is marked for prompt caching, so repeated reviews pay full price for it only once per cache window. One review sends roughly the contract (3k-6k tokens) plus ~8k tokens of cached playbook/register context.
 
 ## Data notes and limitations
 

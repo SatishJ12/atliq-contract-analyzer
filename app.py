@@ -12,8 +12,8 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from analyzer import (EXTRACT_MODEL, REVIEW_MODEL, Report, analyze, ask_about_contract, brief_markdown,
-                      llm_available)
+from analyzer import (ASK_MODEL, EXTRACT_MODEL, REVIEW_MODEL, Report, analyze, ask_about_contract, ask_available,
+                      brief_markdown, llm_available)
 from rules import finding_ids
 from data_loader import DATASET_TODAY, extract_text_from_upload, list_incoming, load_register, load_tracker, read_text
 
@@ -96,6 +96,8 @@ with st.sidebar:
         else:
             st.info("Rules + register mode. Set `ANTHROPIC_API_KEY` to add Claude's clause-by-clause review.")
         use_llm = False
+    if ask_available():
+        st.caption(f"Ask about this contract: `{ASK_MODEL}` on Groq")
 
     st.divider()
     source = st.radio("Contract to review", ["Incoming draft (dataset)", "Upload a contract"], label_visibility="visible")
@@ -249,13 +251,13 @@ with tab_review:
             st.markdown(esc(md))
 
         st.divider()
-        if not llm_available():
-            # Free-text Q&A needs Claude. Without a key, say so up front and point at the
+        if not ask_available():
+            # Free-text Q&A needs Groq. Without a key, say so up front and point at the
             # tabs above instead of showing a box that can only return an error.
             st.markdown("**Ask about this contract**")
             st.info(
-                "Free-text questions need Claude, which is off in this version "
-                + ("(it runs entirely in your browser)." if os.environ.get("ATLIQ_BROWSER_BUILD") == "1" else "(no `ANTHROPIC_API_KEY` is set).")
+                "Free-text questions need an AI model, which is off in this version "
+                + ("(it runs entirely in your browser)." if os.environ.get("ATLIQ_BROWSER_BUILD") == "1" else "(no `GROQ_API_KEY` is set).")
                 + " Everything the rules, commitment register and completeness checks found is already in the tabs above this line: "
                 "**Prior commitments** (register conflicts), **Clause risks** (playbook rules), **Document set** (missing BAA / DPA / annexes), "
                 "**Precedents & team notes**, and **Review brief & decisions**. Click a tab to open it."
@@ -263,7 +265,8 @@ with tab_review:
         else:
             # A form so the question is sent once, on Ask, not again on every other widget change.
             with st.form(f"ask-{filename}"):
-                q = st.text_input("Ask about this contract", placeholder="e.g. Does the Al Noor waiver help here? Who owns the models we build?")
+                q = st.text_input("Ask about this contract", placeholder="e.g. Does the Al Noor waiver help here? Who owns the models we build?",
+                                  help=f"Answered by `{ASK_MODEL}` on Groq from the contract, findings, register and team notes.")
                 asked = st.form_submit_button("Ask")
             answers = st.session_state.setdefault("answers", {})
             if asked and q.strip():

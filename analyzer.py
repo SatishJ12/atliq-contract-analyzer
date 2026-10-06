@@ -4,6 +4,8 @@ Runs fully without an API key (rules + register + retrieval). With
 ANTHROPIC_API_KEY set, Claude adds a clause-by-clause review grounded in the
 same evidence, and every quote it returns is string-matched against the
 contract before it is shown (unverified quotes are labelled, never hidden).
+With GROQ_API_KEY set, "Ask about this contract" answers free-text questions
+through Groq (llama-3.3-70b-versatile), sized to fit the Groq free tier.
 """
 from __future__ import annotations
 
@@ -22,24 +24,46 @@ from rules import SEV_ORDER, DocProfile, Finding, downgrade_severity, finding_id
 # Haiku 4.5 for extraction-style work, Sonnet 4.6 for the risk review.
 REVIEW_MODEL = os.environ.get("ATLIQ_REVIEW_MODEL", "claude-sonnet-4-6")
 EXTRACT_MODEL = os.environ.get("ATLIQ_EXTRACT_MODEL", "claude-haiku-4-5")
+# Free-text Q&A runs on Groq (same model the v2 prototype uses for Ask).
+ASK_MODEL = os.environ.get("ATLIQ_ASK_MODEL", "llama-3.3-70b-versatile")
+# Groq's free tier allows ~12k tokens/min for this model, counting max_tokens,
+# so the Ask prompt is capped well under that (~4 chars per token).
+ASK_CONTRACT_CHARS = 24_000
+ASK_NOTE_CHARS = 1_200
+# Register fields the Ask prompt leaves out (verbatim quotes stay in the tabs) to save tokens.
+ASK_REGISTER_SKIP = {"triggers", "quote", "source_file", "tracker_id"}
 
 COUNSEL_VALUE_THRESHOLD = 150_000
 
 
-def _get_api_key() -> str | None:
-    key = os.environ.get("ANTHROPIC_API_KEY")
+def _get_secret(name: str) -> str | None:
+    key = os.environ.get(name)
     if key:
         return key
     try:  # Streamlit Cloud secrets
         import streamlit as st
 
-        return st.secrets.get("ANTHROPIC_API_KEY")  # type: ignore[attr-defined]
+        return st.secrets.get(name)  # type: ignore[attr-defined]
     except Exception:
         return None
 
 
+def _get_api_key() -> str | None:
+    return _get_secret("ANTHROPIC_API_KEY")
+
+
+def _get_groq_key() -> str | None:
+    return _get_secret("GROQ_API_KEY")
+
+
 def llm_available() -> bool:
+    """Claude clause-by-clause review (ANTHROPIC_API_KEY)."""
     return bool(_get_api_key())
+
+
+def ask_available() -> bool:
+    """Free-text Q&A (GROQ_API_KEY)."""
+    return bool(_get_groq_key())
 
 
 @dataclass
@@ -201,23 +225,63 @@ Return the review as JSON matching the schema."""
     return json.loads(body)
 
 
-def ask_about_contract(question: str, text: str, report: Report) -> str:
-    """Free-form Q&A grounded in the contract + register (needs an API key)."""
-    if not llm_available():
-        return "Add an ANTHROPIC_API_KEY to ask questions. The rule, register and document-set results are in the Prior commitments, Clause risks and Document set tabs above, and work without it."
-    import anthropic
+ASK_SYSTEM_PROMPT = """You answer questions about a draft contract for AtliQ Technologies, an IT services firm with no legal team. \
+CEO Karandeep signs every contract. Answer in under 150 words and quote clause numbers. Use only the contract, \
+AtliQ's checklist, entities, commitment register, team notes and findings below. If they do not answer the question, \
+say so and say who at AtliQ would know. This is not legal advice.
 
-    client = anthropic.Anthropic(api_key=_get_api_key())
-    findings = "\n".join(f"- [{f.severity}] {f.title}: {f.explanation}" for f in report.findings)
-    resp = client.messages.create(
-        model=REVIEW_MODEL,
-        max_tokens=4000,
-        output_config={"effort": "low"},
-        system=_system_blocks() + [{"type": "text", "text": "Answer the user's question about the contract in under 150 words. "
-                                     "Quote clause numbers. If the documents do not answer it, say so and say who at AtliQ would know."}],
-        messages=[{"role": "user", "content": f"<contract>\n{text}\n</contract>\n\n<findings>\n{findings}\n</findings>\n\nQuestion: {question}"}],
-    )
-    return next((b.text for b in resp.content if b.type == "text"), "")
+<karandeep_checklist>
+{checklist}
+</karandeep_checklist>
+
+<atliq_entities>
+{entities}
+</atliq_entities>
+
+<commitment_register>
+{register}
+</commitment_register>
+"""
+
+
+def _ask_messages(question: str, text: str, report: Report) -> list[dict]:
+    docs = load_playbook_docs()
+    register = json.dumps([{k: v for k, v in e.items() if k not in ASK_REGISTER_SKIP} for e in load_register()],
+                          separators=(",", ":"))
+    system = ASK_SYSTEM_PROMPT.format(checklist=docs.get("karandeep_contract_checklist.md", ""),
+                                      entities=docs.get("atliq_entities.md", ""), register=register)
+    findings = "\n".join(f"- [{f.severity}] {f.title} (cl. {f.clause_ref}): {f.explanation}" for f in report.findings) or "(none)"
+    # Only the notes about this counterparty, not the whole negotiation history, to stay under the free-tier limit.
+    notes = "\n\n".join(f"### {n}\n{b[:ASK_NOTE_CHARS]}" for n, b in report.context_notes) or "(none)"
+    contract = text if len(text) <= ASK_CONTRACT_CHARS else text[:ASK_CONTRACT_CHARS] + "\n[... contract truncated ...]"
+    user = (f"<contract>\n{contract}\n</contract>\n\n<team_notes_about_this_counterparty>\n{notes}\n"
+            f"</team_notes_about_this_counterparty>\n\n<findings>\n{findings}\n</findings>\n\nQuestion: {question}")
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def ask_about_contract(question: str, text: str, report: Report) -> str:
+    """Free-form Q&A grounded in the contract + register (needs a Groq API key)."""
+    if not ask_available():
+        return "Add a GROQ_API_KEY to ask questions. The rule, register and document-set results are in the Prior commitments, Clause risks and Document set tabs above, and work without it."
+    import groq
+
+    client = groq.Groq(api_key=_get_groq_key())
+    try:
+        resp = client.chat.completions.create(
+            model=ASK_MODEL,
+            messages=_ask_messages(question, text, report),
+            max_tokens=512,
+            temperature=0.2,
+        )
+    except groq.RateLimitError:
+        return "Groq's free-tier limit was reached. Wait a minute and ask again; the tabs above still have every finding."
+    except groq.APIStatusError as e:
+        if e.status_code == 413:
+            return "This contract is too long for Groq's free tier in one question. The tabs above still have every finding."
+        return f"Groq returned an error ({e.status_code}). The tabs above still have every finding."
+    except groq.APIConnectionError:
+        return "Could not reach Groq. Check the network and try again; the tabs above still have every finding."
+    return resp.choices[0].message.content or ""
 
 
 # --------------------------------------------------------------------------- #

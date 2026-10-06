@@ -54,8 +54,19 @@ def test_ask_posts_question_text_and_token_to_the_service(service):
 
 def test_server_side_token_is_used_when_none_is_typed(service, monkeypatch):
     monkeypatch.setenv("ATLIQ_ACCESS_TOKEN", "server-tok")
+    monkeypatch.setenv("ATLIQ_API_URL", service)
+    analyzer.ask_about_contract("q", "t", "x.md")                    # the configured service
+    analyzer.ask_about_contract("q", "t", "x.md", api_url=service)   # same URL typed into the settings box
+    assert [s["token"] for s in Stub.seen] == ["server-tok", "server-tok"]
+
+
+def test_server_side_token_never_goes_to_a_typed_url(service, monkeypatch):
+    monkeypatch.setenv("ATLIQ_ACCESS_TOKEN", "server-tok")
+    monkeypatch.setenv("ATLIQ_API_URL", "https://atliq-contract-api.onrender.com")
     analyzer.ask_about_contract("q", "t", "x.md", api_url=service)
-    assert Stub.seen[0]["token"] == "server-tok"
+    assert Stub.seen[0]["token"] is None
+    analyzer.ask_about_contract("q", "t", "x.md", access_token="typed", api_url=service)
+    assert Stub.seen[1]["token"] == "typed"                          # a token the visitor typed themselves still goes
 
 
 def test_no_token_sends_no_header(service):
@@ -74,6 +85,7 @@ def test_api_url_comes_from_env_else_render_default(monkeypatch):
     (401, {"detail": "The AI modes need an access token."}, "needs its access token"),
     (429, {"detail": "Today's AI budget is used up. Try again tomorrow."}, "budget is used up"),
     (422, {"detail": [{"msg": "too long"}]}, "too long"),
+    (413, {"detail": "This contract is too long for the AI model's per-minute token limit."}, "per-minute token limit"),
     (502, {"detail": "The AI service could not answer right now."}, "could not answer right now"),
     (500, {}, "error (500)"),
 ])

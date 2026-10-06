@@ -267,8 +267,11 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> tuple[
 def ask_about_contract(question: str, text: str, filename: str, access_token: str | None = None,
                        api_url: str | None = None) -> str:
     """Free-form Q&A grounded in the contract + register, answered by the v2 AI service."""
-    base = (api_url or ask_api_url()).rstrip("/")
-    token = access_token or server_access_token()
+    configured = ask_api_url()
+    base = (api_url or configured).rstrip("/")
+    # The server-side token only ever goes to the configured service. A URL typed into the app gets a typed
+    # token or none, so a visitor cannot point Ask at their own server and read the secret off the request.
+    token = access_token or (server_access_token() if base == configured else None)
     headers = {"X-Access-Token": token} if token else {}
     status, body = _post_json(f"{base}/api/ask", {"question": question, "text": text, "filename": filename},
                               headers, ASK_TIMEOUT_S)
@@ -281,6 +284,8 @@ def ask_about_contract(question: str, text: str, filename: str, access_token: st
                 "and ask again." + tabs)
     if status == 401:
         return "The AI service needs its access token. Paste it under AI service settings and ask again." + tabs
+    if status == 413 and detail:  # the service says why (e.g. too long for the current Groq plan)
+        return detail + tabs
     if status in (413, 422):
         return "The question or contract is too long for the AI service (question up to 1,000 characters)." + tabs
     if status == 429:

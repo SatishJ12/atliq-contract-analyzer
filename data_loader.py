@@ -38,6 +38,7 @@ def _resolve_data_dir() -> Path:
 DATA_DIR = _resolve_data_dir()
 SIGNED_DIR = DATA_DIR / "signed_contracts"
 INCOMING_DIR = DATA_DIR / "incoming"
+DEMO_UPLOADS_DIR = DATA_DIR / "demo_uploads"  # held back for live upload demos; never scanned
 NOTES_DIR = DATA_DIR / "meeting_notes"
 
 

@@ -1,4 +1,4 @@
-"""Golden test set: the known problems in the 15 incoming drafts.
+"""Golden test set: the known problems in the 15 drafts (13 incoming + 2 held back in data/demo_uploads).
 
 Run:  python -m pytest -q     (no API key needed; tests the deterministic layer)
 """
@@ -8,11 +8,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from analyzer import analyze  # noqa: E402
-from data_loader import INCOMING_DIR, read_text  # noqa: E402
+from data_loader import DEMO_UPLOADS_DIR, INCOMING_DIR, read_text  # noqa: E402
 
 
 def run(name: str):
-    path = next(INCOMING_DIR.glob(f"*{name}*"))
+    path = next(p for d in (INCOMING_DIR, DEMO_UPLOADS_DIR) for p in d.glob(f"*{name}*"))
     return analyze(read_text(path), path.name, use_llm=False)
 
 

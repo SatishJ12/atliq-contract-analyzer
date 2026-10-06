@@ -26,7 +26,9 @@ Without an Anthropic key the app runs in **rules + register mode** plus Ask: eve
 - High findings ask for a logged human decision.
 - Escalate to counsel when: value ≥ $150k with open High findings, a conflict with a signed commitment, a HIPAA/GDPR document gap, or a "non-negotiable" template with High findings.
 
-## Results on the 15 incoming drafts (rules + register mode)
+## Results on the 15 drafts (rules + register mode)
+
+Gulf Crown MSA and Harrington MSA sit in `data/demo_uploads/` rather than `data/incoming/`, so they are not pre-loaded: upload them during a demo to show a live review.
 
 | Draft | What it catches |
 |---|---|
@@ -118,7 +120,7 @@ contract-analyzer/
 ├── build_register.py         Re-extracts the register with Claude (claude-haiku-4-5), drops unverifiable quotes
 ├── tests/test_golden_cases.py
 ├── tests/test_review_findings.py
-├── data/                     The synthetic AtliQ dataset (tracker, 17 signed, 15 incoming, notes)
+├── data/                     The synthetic AtliQ dataset (tracker, 17 signed, 13 incoming, 2 demo uploads, notes)
 ├── requirements.txt
 └── .streamlit/               config.toml, secrets.toml.example
 ```

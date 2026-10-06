@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import commitments  # noqa: E402
 from analyzer import analyze, brief_markdown  # noqa: E402
-from data_loader import INCOMING_DIR, read_text  # noqa: E402
+from data_loader import DEMO_UPLOADS_DIR, read_text  # noqa: E402
 from rules import (DocProfile, Finding, check_governing_law, downgrade_severity, finding_ids, is_us_law,  # noqa: E402
                    profile_document)
 
@@ -59,7 +59,7 @@ def test_finding_ids_survive_reordering_and_new_findings():
 
 
 def test_brief_uses_decisions_keyed_by_finding_id():
-    path = next(INCOMING_DIR.glob("*gulf_crown*"))
+    path = next(DEMO_UPLOADS_DIR.glob("*gulf_crown*"))
     r = analyze(read_text(path), path.name, use_llm=False)
     target = next(f for f in r.findings if f.severity == "High")
     fid = finding_ids(r.findings)[r.findings.index(target)]
@@ -71,6 +71,6 @@ def test_missing_signed_contracts_do_not_crash(monkeypatch):
     monkeypatch.setattr(commitments, "_INDEX", None)
     monkeypatch.setattr(commitments, "signed_clauses", lambda: [])
     assert commitments.similar_signed_clauses("liquidated damages") == []
-    p = profile_document(read_text(next(INCOMING_DIR.glob("*gulf_crown*"))))
+    p = profile_document(read_text(next(DEMO_UPLOADS_DIR.glob("*gulf_crown*"))))
     assert commitments.precedent_matches(p) == []
     monkeypatch.setattr(commitments, "_INDEX", None)  # let later tests rebuild the real index

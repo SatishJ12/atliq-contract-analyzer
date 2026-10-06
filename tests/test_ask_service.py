@@ -85,6 +85,7 @@ def test_api_url_comes_from_env_else_render_default(monkeypatch):
     (401, {"detail": "The AI modes need an access token."}, "needs its access token"),
     (429, {"detail": "Today's AI budget is used up. Try again tomorrow."}, "budget is used up"),
     (422, {"detail": [{"msg": "too long"}]}, "too long"),
+    (413, {"detail": "This contract is too long for the AI model's per-minute token limit."}, "per-minute token limit"),
     (502, {"detail": "The AI service could not answer right now."}, "could not answer right now"),
     (500, {}, "error (500)"),
 ])

@@ -284,6 +284,8 @@ def ask_about_contract(question: str, text: str, filename: str, access_token: st
                 "and ask again." + tabs)
     if status == 401:
         return "The AI service needs its access token. Paste it under AI service settings and ask again." + tabs
+    if status == 413 and detail:  # the service says why (e.g. too long for the current Groq plan)
+        return detail + tabs
     if status in (413, 422):
         return "The question or contract is too long for the AI service (question up to 1,000 characters)." + tabs
     if status == 429:

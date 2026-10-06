@@ -204,7 +204,7 @@ Return the review as JSON matching the schema."""
 def ask_about_contract(question: str, text: str, report: Report) -> str:
     """Free-form Q&A grounded in the contract + register (needs an API key)."""
     if not llm_available():
-        return "Add an ANTHROPIC_API_KEY to ask questions. The rules, register and completeness checks above work without it."
+        return "Add an ANTHROPIC_API_KEY to ask questions. The rule, register and document-set results are in the Prior commitments, Clause risks and Document set tabs above, and work without it."
     import anthropic
 
     client = anthropic.Anthropic(api_key=_get_api_key())
